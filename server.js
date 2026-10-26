@@ -1,17 +1,16 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 const imageRoutes = require('./routes/imageRoutes');
 
 // Load environment variables
 dotenv.config();
 
-// Connect to MongoDB
-connectDB();
-
 const app = express();
 const PORT = process.env.PORT || 5000;
+app.set('trust proxy', 1);
 
 // Middleware
 app.use(cors());
@@ -20,7 +19,14 @@ app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 // Health Check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'lmart-image-server', timestamp: new Date() });
+  const connected = mongoose.connection.readyState === 1;
+  res.status(connected ? 200 : 503).json({
+    status: connected ? 'ok' : 'unavailable',
+    service: 'lmart-image-server',
+    database: mongoose.connection.name || null,
+    connected,
+    timestamp: new Date(),
+  });
 });
 
 // Image Routes
@@ -42,6 +48,11 @@ app.use((err, req, res, next) => {
 });
 
 // Start Server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+const startServer = async () => {
+  await connectDB();
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+};
+
+startServer();

@@ -7,6 +7,11 @@ const productImageSchema = new mongoose.Schema(
       default: '',
       index: true,
     },
+    associatedRecordId: {
+      type: String,
+      default: '',
+      index: true,
+    },
     data: {
       type: String,
       required: true,

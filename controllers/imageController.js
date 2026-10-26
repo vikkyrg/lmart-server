@@ -1,5 +1,5 @@
 const ProductImage = require('../models/ProductImage');
-const { validateMagicBytes } = require('../middleware/upload');
+const { getImageMimeType } = require('../middleware/upload');
 
 // Helper to construct full URL for an image ID
 const getImageEndpointUrl = (req, id) => {
@@ -18,23 +18,25 @@ const uploadImage = async (req, res) => {
       return res.status(400).json({ error: 'No image file provided' });
     }
 
-    // Validate magic bytes
-    if (!validateMagicBytes(req.file.buffer)) {
-      return res.status(400).json({ error: 'File content does not match a valid image format' });
+    const detectedMimeType = getImageMimeType(req.file.buffer);
+    if (!detectedMimeType || (req.file.mimetype !== detectedMimeType && !(req.file.mimetype === 'image/jpg' && detectedMimeType === 'image/jpeg'))) {
+      return res.status(400).json({ error: 'File content does not match the declared image type' });
     }
 
-    const { productId, isMain, color, role } = req.body;
+    const { productId, associatedRecordId, isMain, color, role } = req.body;
+    const imageRole = role || (productId ? 'product' : 'banner');
     const base64Data = req.file.buffer.toString('base64');
 
     const newImage = new ProductImage({
-      productId: productId || '',
+      productId: (productId || (['product', 'oldee-product', 'product-processed'].includes(imageRole) ? associatedRecordId : '') || '').slice(0, 256),
+      associatedRecordId: (associatedRecordId || productId || '').slice(0, 256),
       data: base64Data,
-      contentType: req.file.mimetype,
-      originalName: req.file.originalname,
+      contentType: detectedMimeType,
+      originalName: req.file.originalname.slice(0, 255),
       size: req.file.size,
       isMain: isMain === 'true' || isMain === true,
-      color: color || '',
-      role: role || (productId ? 'product' : 'banner'),
+      color: (color || '').slice(0, 128),
+      role: imageRole.slice(0, 64),
     });
 
     const savedImage = await newImage.save();
@@ -43,8 +45,10 @@ const uploadImage = async (req, res) => {
     return res.status(201).json({
       success: true,
       id: savedImage._id,
+      imageId: savedImage._id,
       url: imageUrl,
       productId: savedImage.productId,
+      associatedRecordId: savedImage.associatedRecordId,
       contentType: savedImage.contentType,
       originalName: savedImage.originalName,
       size: savedImage.size,
@@ -77,6 +81,7 @@ const getImageById = async (req, res) => {
       return res.json({
         id: image._id,
         productId: image.productId,
+        associatedRecordId: image.associatedRecordId,
         contentType: image.contentType,
         originalName: image.originalName,
         size: image.size,
@@ -114,6 +119,7 @@ const getImagesByProduct = async (req, res) => {
     const formatted = images.map((img) => ({
       id: img._id,
       productId: img.productId,
+      associatedRecordId: img.associatedRecordId,
       contentType: img.contentType,
       originalName: img.originalName,
       size: img.size,
@@ -143,8 +149,9 @@ const replaceImage = async (req, res) => {
       return res.status(400).json({ error: 'No replacement image file provided' });
     }
 
-    if (!validateMagicBytes(req.file.buffer)) {
-      return res.status(400).json({ error: 'File content does not match a valid image format' });
+    const detectedMimeType = getImageMimeType(req.file.buffer);
+    if (!detectedMimeType || (req.file.mimetype !== detectedMimeType && !(req.file.mimetype === 'image/jpg' && detectedMimeType === 'image/jpeg'))) {
+      return res.status(400).json({ error: 'File content does not match the declared image type' });
     }
 
     const image = await ProductImage.findById(id);
@@ -152,17 +159,18 @@ const replaceImage = async (req, res) => {
       return res.status(404).json({ error: 'Image to replace not found' });
     }
 
-    const { productId, isMain, color, role } = req.body;
+    const { productId, associatedRecordId, isMain, color, role } = req.body;
     const base64Data = req.file.buffer.toString('base64');
 
     image.data = base64Data;
-    image.contentType = req.file.mimetype;
-    image.originalName = req.file.originalname;
+    image.contentType = detectedMimeType;
+    image.originalName = req.file.originalname.slice(0, 255);
     image.size = req.file.size;
-    if (productId !== undefined) image.productId = productId;
+    if (productId !== undefined) image.productId = productId.slice(0, 256);
+    if (associatedRecordId !== undefined) image.associatedRecordId = associatedRecordId.slice(0, 256);
     if (isMain !== undefined) image.isMain = isMain === 'true' || isMain === true;
-    if (color !== undefined) image.color = color;
-    if (role !== undefined) image.role = role;
+    if (color !== undefined) image.color = color.slice(0, 128);
+    if (role !== undefined) image.role = role.slice(0, 64);
 
     const updatedImage = await image.save();
     const imageUrl = getImageEndpointUrl(req, updatedImage._id);
@@ -171,8 +179,10 @@ const replaceImage = async (req, res) => {
       success: true,
       message: 'Image replaced successfully',
       id: updatedImage._id,
+      imageId: updatedImage._id,
       url: imageUrl,
       productId: updatedImage.productId,
+      associatedRecordId: updatedImage.associatedRecordId,
       contentType: updatedImage.contentType,
       originalName: updatedImage.originalName,
       size: updatedImage.size,
