@@ -3,8 +3,11 @@ const { getImageMimeType } = require('../middleware/upload');
 
 // Helper to construct full URL for an image ID
 const getImageEndpointUrl = (req, id) => {
-  const protocol = req.protocol;
-  const host = req.get('host');
+  if (process.env.PUBLIC_BACKEND_URL) {
+    return `${process.env.PUBLIC_BACKEND_URL.replace(/\/+$/, '')}/api/images/${id}`;
+  }
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.headers['x-forwarded-host'] || req.get('host');
   return `${protocol}://${host}/api/images/${id}`;
 };
 
